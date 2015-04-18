@@ -21,7 +21,7 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
     public static function getModuleInfo() {
         return array(
             "title"      => "Social Login",
-            "version"    => "0.0.1",
+            "version"    => 1,
             "summary"    => "Allows users to authenticate through various social APIs using HybridAuth.",
             "singular"   => true,
             "autoload"   => false,
