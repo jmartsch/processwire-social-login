@@ -147,10 +147,12 @@ class SocialLoginProcessRegistration extends Process {
                     $the_value = trim( $post_value );
                     $f->required = true;
 
-                    if ( $the_value != $pass2 ) {
-                        $errors['_pass'] = __( 'Password mismatch' );
-                        break 2;
-                    }
+                    if(preg_match('/[\s\t\r\n]/', $the_value)) $errors['_pass'] = __("Password contained whitespace.");
+                    elseif($the_value != $pass2) $errors['_pass'] = __("Passwords do not match.");
+                    elseif(strlen($the_value) < 6) $errors['_pass'] = __("Password is less than required number of characters.");
+                    elseif(!preg_match('/[a-zA-Z]/', $the_value)) $errors['_pass'] = __("Password does not contain at least one letter (a-z A-Z).");
+                    elseif(!preg_match('/\d/', $the_value)) $errors['_pass'] = __("Password does not contain at least one digit (0-9).");
+                    if ( isset($errors['_pass']) ) break 2;
 
                     break;
                 default:
