@@ -4,8 +4,8 @@
  *
  * @author  Mauro Mascia - Andrea Montaldo
  * 
- * ProcessWire 2.x 
- * Copyright (C) 2015 by Mauro Mascia - Andrea Montaldo 
+ * ProcessWire 2.x
+ * Copyright (C) 2015 by Mauro Mascia - Andrea Montaldo
  * Licensed under GNU/GPL v2, see LICENSE.TXT
  */
 
@@ -78,6 +78,10 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
             $pass .= $chars[mt_rand( 0, strlen( $chars )-1 )];
         }
         return sha1( uniqid() . $pass );
+
+        // // Or
+        // $p = new Password();
+        // return $p->randomBase64String(20);
     }
 
     public function execute( $provider_name = false ) {
@@ -236,20 +240,76 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
 
     static public function getModuleConfigInputfields( Array $data ) {
         $fields = new InputfieldWrapper();
-
-        // since this is a static function, we can't use $this->modules, so get them from the global wire() function
         $modules = wire('modules');
+
+        // -- Add a fieldset with the main options
+        $fieldset = $modules->get( 'InputfieldFieldset' );
+        $fieldset->label = __( 'Main options' );
+        $fieldset->attr( 'id+name', 'social_login_options' );
+
+        $field = $modules->get( 'InputfieldCheckbox' );
+        $field->label = __( 'Enable Activation Code when Registering (an email with the activation code will be sent to the user)' );
+        $field->attr( 'id+name', 'enabled_activation_code' );
+        $field->attr( 'value', 1 );
+        $field->attr( 'checked', empty( $data['enabled_activation_code'] ) ? '' : 'checked' );
+        $fieldset->append( $field );
+
+        $field = $modules->get( 'InputfieldCheckbox' );
+        $field->label = __( 'Enable to use the user email as username (and pagename)' );
+        $field->description = __( 'If left unchecked (default), the username will be created using a random and unique string.' );
+        $field->attr( 'id+name', 'use_email_as_username' );
+        $field->attr( 'value', 0 );
+        $field->attr( 'checked', empty( $data['use_email_as_username'] ) ? '' : 'checked' );
+        $fieldset->append( $field );
+
+        $fields->add( $fieldset );
+
+        // -- Add a fieldset with the registration email option
+        $fieldset = $modules->get( 'InputfieldFieldset' );
+        $fieldset->label = __( 'Registration Options' );
+        $fieldset->attr( 'id+name', 'social_login_registration_options' );
+        $fieldset->showIf = "enabled_activation_code=1";
+
+        $field = $modules->get( "InputfieldText" );
+        $field->label = __( 'Secret activation key' );
+        $field->description = __( 'This secret key will be attached to a salt (a random and unique string) when creating the activation code.' );
+        $field->attr( 'id+name','social_login_registration_secret');
+        $field->attr( 'value', empty( $data['social_login_registration_secret'] ) ? 'mySeCreTK3y' : $data['social_login_registration_secret'] );
+        $fieldset->append( $field );
+
+        $field = $modules->get( "InputfieldText" );
+        $field->label = __( 'Email From' );
+        $field->attr( 'id+name','social_login_registration_email_from');
+        $field->attr( 'value', empty( $data['social_login_registration_email_from'] ) ? '' : $data['social_login_registration_email_from'] );
+        $fieldset->append( $field );
+
+        $field = $modules->get( "InputfieldText" );
+        $field->label = __( 'Email Subject' );
+        $field->attr( 'id+name','social_login_registration_email_subject' );
+        $field->attr( 'value', empty( $data['social_login_registration_email_subject'] ) ? '' : $data['social_login_registration_email_subject'] );
+        $fieldset->append( $field );
+
+        $field = $modules->get( "InputfieldTextarea" );
+        $field->label = __( 'Email Body' );
+        $field->description = __( 'The following tokens will be replaced when found:' );
+        $field->description.= ' {{activation-link}} ';
+        $field->attr( 'id+name','social_login_registration_email_body' );
+        $field->attr( 'value', empty( $data['social_login_registration_email_body'] ) ? '' : $data['social_login_registration_email_body'] );
+        $fieldset->append( $field );
+
+        $fields->add( $fieldset );
+
 
         $providers_fieldset = $modules->get( 'InputfieldFieldset' );
         $providers_fieldset->label = 'Social Providers'; 
-        $providers_fieldset->attr( 'name', 'social_providers' );
+        $providers_fieldset->attr( 'id+name', 'social_providers' );
 
-        // Generate configuratin fields based on the array of providers
+        // -- Generate configuratin fields based on the array of providers
         $providers = include( 'includes/providers_config.php' );
         foreach ( $providers as $p_key => $provider ) {
             $provider_fieldset = $modules->get( 'InputfieldFieldset' );
             $provider_fieldset->label = $provider['label'];
-            $provider_fieldset->attr( 'name', self::mname.'_'. $p_key );
+            $provider_fieldset->attr( 'id+name', self::mname.'_'. $p_key );
             $provider_fieldset->icon = 'fa-'.$p_key; // font-awesome
 
             $enabled_field = self::getProviderFieldKey( $p_key, 'enabled' );
@@ -283,12 +343,12 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
         // Add a fieldset with checkboxes to allow the choice of desired user fields for the profile.
         
         $fieldset = $modules->get( 'InputfieldFieldset' );
-        $fieldset->label = 'Enabled Profile Fields'; 
-        $fieldset->attr( 'name', 'enabled_profile_fields' );
+        $fieldset->label = 'Enabled Profile Fields';
+        $fieldset->attr( 'id+name', 'enabled_profile_fields' );
 
         $cbs_key = 'enabled_profile_user_fields';
         $field = $modules->get( 'InputfieldCheckboxes' );
-        $field->attr( 'name', $cbs_key );
+        $field->attr( 'id+name', $cbs_key );
         $field->label = 'Select user fields to be shown under the profile page';
 
         $wuser = wire('user');
@@ -315,13 +375,13 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
 
         // Add a fieldset with checkboxes to allow the choice of desired user fields for the registration.
 
-        $fieldset = $modules->get( 'InputfieldFieldset' );
-        $fieldset->label = 'Enabled Registration Fields'; 
-        $fieldset->attr( 'name', 'enabled_registration_fields' );
+        $registration_fields_fieldset = $modules->get( 'InputfieldFieldset' );
+        $registration_fields_fieldset->label = 'Enabled Registration Fields';
+        $registration_fields_fieldset->attr( 'id+name', 'enabled_registration_fields' );
 
         $cbs_key = 'enabled_registration_user_fields';
         $field = $modules->get( 'InputfieldCheckboxes' );
-        $field->attr( 'name', $cbs_key );
+        $field->attr( 'id+name', $cbs_key );
         $field->label = 'Select user fields to be shown under the registration page';
 
         $wuser = wire('user');
@@ -346,11 +406,11 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
             $attr = array( 'checked' => $is_checked ? 'checked' : '', /*'disabled' => $disabled ? 'disabled' : ''*/ );
             $field->addOption( $_field->name, $field_lab, $attr );
         }
-        $fieldset->append( $field );
-        $fields->add( $fieldset );
+        $registration_fields_fieldset->append( $field );
+        $fields->add( $registration_fields_fieldset );
 
         $field = $modules->get( "InputfieldPageListSelect" );
-        $field->attr( 'name', self::mname.'_redirectPage' );
+        $field->attr( 'id+name', self::mname.'_redirectPage' );
 
         if ( isset( $data['redirectPage'] ) ) {
             $field->attr( 'value', $data['redirectPage'] );
@@ -372,7 +432,7 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
 
         $field = wire('modules')->get( $value['type'] );
 
-        $field->attr( 'name', $field_key );
+        $field->attr( 'id+name', $field_key );
 
         if ( isset( $data[$field_key] )  ) {
             $field->attr( 'value', $data[$field_key] );
@@ -429,6 +489,27 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
             $new_field->name        = $fullUserInfo;
             $new_field->label       = 'Social Profile Full';
             $new_field->description = 'Stores the full social profile for user';
+            $new_field->inputfield  = $input;
+            $new_field->save();
+
+            // Add the field to user fieldgroup (basically means user template in this context)
+            $user_fieldgroup = $this->fieldgroups->get( 'user' );
+            $user_fieldgroup->add( $new_field );
+            $user_fieldgroup->save();
+        }
+
+        $field = $this->fields->get( 'activation_key' );
+        if ( ! $field ) {
+            // Create hidden inputfield
+            $input = new InputfieldText;
+            $input->set( 'collapsed', Inputfield::collapsedHidden );
+
+            // Create field called social_id and set details and inputfield
+            $new_field = new Field();
+            $new_field->type        = $this->modules->get( "FieldtypeText" );
+            $new_field->name        = 'activation_key';
+            $new_field->label       = 'Activation Key';
+            $new_field->description = 'Stores the activation key for user or 0 if activated';
             $new_field->inputfield  = $input;
             $new_field->save();
 
