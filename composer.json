@@ -3,11 +3,11 @@
   "description": "Social login through HybridAuth, standard login, registration and user profile for your site",
   "homepage": "https://github.com/jmartsch/processwire-social-login/",
   "type": "pw-module",
-  "minimum-stability": "dev",
   "require": {
     "php": ">=5.3.0",
     "hari/pw-module": "~1.0",
-    "facebook/graph-sdk": "5.4"
+    "facebook/graph-sdk": "5.4",
+    "hybridauth/hybridauth": "^2.8"
   },
   "license": "GNU GPL v2",
   "authors": [
