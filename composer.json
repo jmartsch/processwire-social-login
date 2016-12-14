@@ -8,7 +8,7 @@
     "hari/pw-module": "~1.0",
     "facebook/graph-sdk": "5.4"
   },
-  "license": "GNU/GPL v2",
+  "license": "GNU GPL v2",
   "authors": [
     {
       "name": "Jens Martsch",
