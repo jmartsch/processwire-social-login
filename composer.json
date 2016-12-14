@@ -1,0 +1,20 @@
+{
+  "name": "jmartsch/processwire-social-login",
+  "description": "Social login through HybridAuth, standard login, registration and user profile for your site",
+  "homepage": "https://github.com/jmartsch/processwire-social-login/",
+  "type": "pw-module",
+  "require": {
+    "facebook/graph-sdk": "5.4"
+  },
+  "license": "GNU/GPL v2",
+  "authors": [
+    {
+      "name": "Jens Martsch",
+      "email": "jmartsch@gmail.com"
+    },
+    {
+      "name": "Mauro Mascia",
+      "email": "info@mauromascia.com"
+    }
+  ]
+}
