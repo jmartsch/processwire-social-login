@@ -20,11 +20,17 @@ HybridAuth goal is to act as an abstract API between your application and variou
 social APIs and identities providers such as Facebook, Twitter and Google.
 
 
-##Installation
+## Requirements
+1. ProcessWire 3.0+
 
-1. Install the module just like any other ProcessWire module. Check out the guide [How-To Install or Uninstall Modules](http://modules.processwire.com/install-uninstall/)
+2. Composer
+
+If you don't have composer installed, have a look here on how to get it: [Composer Installation](https://getcomposer.org/download/)
+
+
+##Installation
+1. In your processwire root directory run `composer require jmartsch/processwire-social-login`
 2. If the automatic copy fails, copy the files `social-login.php` and `register.php` from `/site/modules/processwire-social-login/templates` folder to your `/site/templates/` folder
-3. run `composer install` from inside the module
 3. Enable fields to be shown under the profile and the register page
 4. Create a new app from Facebook Developers site: https://developers.facebook.com/apps/
 5. Go to the modules setting and enable Facebook 
