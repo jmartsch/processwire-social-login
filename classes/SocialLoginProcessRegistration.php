@@ -1,4 +1,4 @@
-<?php
+<?php namespace ProcessWire;
 
 /**
  * SocialLoginProcessRegistration
@@ -13,7 +13,7 @@ class SocialLoginProcessRegistration extends Process {
 
     public function process() {
         $this->user = $this->wire( 'user' );
-        $this->setFuel( 'processHeadline', $this->_( "Profile:" ) . ' ' . $this->user->name ); // Primary Headline (precedes the username)
+        $this->wire( 'processHeadline', $this->_( "Profile:" ) . ' ' . $this->user->name ); // Primary Headline (precedes the username)
         $form = $this->buildForm();
 
         if ( count( $this->wire( 'notices' ) ) ) {

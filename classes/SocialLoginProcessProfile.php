@@ -1,4 +1,4 @@
-<?php
+<?php namespace ProcessWire;
 
 /**
  * Process SocialLogin Profile
@@ -18,7 +18,8 @@ class SocialLoginProcessProfile extends ProcessProfile {
 
 	public function process() {
 		$this->user = $this->wire( 'user' );
-		$this->setFuel( 'processHeadline', $this->_( "Profile:" ) . ' ' . $this->user->name ); // Primary Headline (precedes the username)
+		$this->wire( 'processHeadline', $this->_( "Profile:" ) . ' ' . $this->user->name ); // Primary Headline (precedes the username)
+
 		$form = $this->buildForm();
 
 		if ( $this->input->post->submit_save_profile ) {
