@@ -3,6 +3,7 @@
   "description": "Social login through HybridAuth, standard login, registration and user profile for your site",
   "homepage": "https://github.com/jmartsch/processwire-social-login/",
   "type": "pw-module",
+  "minimum-stability": "stable",
   "require": {
     "php": ">=5.3.0",
     "hari/pw-module": "~1.0",
