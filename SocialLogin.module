@@ -1,4 +1,6 @@
 <?php
+
+
 /**
  * Module: Social Login
  *
@@ -118,9 +120,15 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
                     "keys"    => $provider_keys
                 )
             ),
+            "debug_mode" => true,
+
+            // to enable logging, set 'debug_mode' to true, then provide here a path of a writable file
+            "debug_file" => "./debug.log",
         );
 
+
         require_once( "Hybrid/Auth.php" );
+
         $hybridauth   = new Hybrid_Auth( $config );
         $adapter      = $hybridauth->authenticate( $provider_label );
         $user_profile = $adapter->getUserProfile();
@@ -225,14 +233,14 @@ class SocialLogin extends WireData implements Module, ConfigurableModule {
     public function showProfile() {
         require_once( "classes/SocialLoginProcessProfile.php" );
 
-        $SocialLoginProcessProfile = new SocialLoginProcessProfile( $this->enabled_profile_user_fields );
+        $SocialLoginProcessProfile = new \ProcessWire\SocialLoginProcessProfile( $this->enabled_profile_user_fields );
         $SocialLoginProcessProfile->process();
     }
 
     public function showRegistration() {
         require_once( "classes/SocialLoginProcessRegistration.php" );
 
-        $SocialLoginProcessRegistration = new SocialLoginProcessRegistration( $this->enabled_registration_user_fields );
+        $SocialLoginProcessRegistration = new \ProcessWire\SocialLoginProcessRegistration( $this->enabled_registration_user_fields );
         $SocialLoginProcessRegistration->process();
     }
 
