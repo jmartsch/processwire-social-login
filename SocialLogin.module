@@ -1,641 +1,655 @@
 <?php
 
 
-/**
- * Module: Social Login
- *
- * @author  Mauro Mascia - Andrea Montaldo
- * 
- * ProcessWire 2.x
- * Copyright (C) 2015 by Mauro Mascia - Andrea Montaldo
- * Licensed under GNU/GPL v2, see LICENSE.TXT
- */
-
-class SocialLogin extends WireData implements Module, ConfigurableModule {
-
-    const socialLoginPagePath = 'social-login';
-    const mname               = 'social_login';
-    const fieldName           = 'social_id';
-    const fullUserInfo        = 'oauth';
-    const registerPath        = 'register';
-    const siteUrl             = '';
-
-    public static function getModuleInfo() {
-        return array(
-            "title"      => "Social Login",
-            "version"    => 1,
-            "summary"    => "Allows users to authenticate through various social APIs using HybridAuth.",
-            "singular"   => true,
-            "autoload"   => false,
-        );
-    }
-
-    // @see - https://processwire.com/talk/topic/808-variable-for-domain-name/?p=93034
-    public function init() {
-        $port = ($_SERVER['SERVER_PORT'] == 80 || $_SERVER['SERVER_PORT'] == 443) ? '' : ':' . $_SERVER['SERVER_PORT'];
-        $protocol = ($_SERVER['SERVER_PORT'] == 443) ? 'https://' : 'http://';
-        $this->siteUrl = $protocol . $_SERVER['SERVER_NAME'] . $port . '/';
-    }
-
-    public function getPath() {
-        return dirname( __FILE__ );
-    }
-
-    public function getHAUrl() {
-        return $this->siteUrl . wire( 'pages' )->findOne( "template=" . self::socialLoginPagePath )->url . '?hybridauth=login';
-    }
-
-    static public function getProviderFieldKey( $p_key, $key ) {
-        return self::mname.'_'. $p_key . '_' . $key;
-    }
-
-    public function getProvidersMenu() {
-        $lis = array();
-
-        $providers = include( 'includes/providers_config.php' );
-        foreach ( $providers as $p_key => $provider ) {
-            $provider_enabled = $this->getProviderFieldKey( $p_key, 'enabled' );
-            if ( $this->{$provider_enabled} ) {
-                $lis[] = '<a href="?provider='.$p_key.'" class="fa-'.$p_key.'">'.$provider['label'].'</a>';
-            }
-        }
-
-        return $lis;
-    }
-
-    public function showError( $err ) {
-        echo '<div class="error"><span>'. $err . '</span></div>';
-    }
-
     /**
-     * Generate a random, temporary password:
-     * 13 chars from uniqid and 7 randomly generated
-     * 
-     * @see  https://processwire.com/talk/topic/1716-integrating-a-member-visitor-login-form/?p=15919
+     * Module: Social Login
+     *
+     * @author  Mauro Mascia - Andrea Montaldo
+     * @author  Jens Martsch
+     *
+     * ProcessWire 3.x
+     * Compatibility for ProcessWire 3 and latest HybridAuth was added by Jens Martsch
+     * Copyright (C) 2015 by Mauro Mascia - Andrea Montaldo
+     * Licensed under GNU/GPL v2, see LICENSE.TXT
      */
-    public static function passwordGen() {
-        $pass = '';
-        $chars = 'abcdefghjkmnopqrstuvwxyzABCDEFGHJKMNOPQRSTUVWXYZ0123456789';
-        for ( $n = 0; $n < 7; $n++ ) {
-            $pass .= $chars[mt_rand( 0, strlen( $chars )-1 )];
-        }
-        return sha1( uniqid() . $pass );
+    class SocialLogin extends WireData implements Module, ConfigurableModule
+    {
 
-        // // Or
-        // $p = new Password();
-        // return $p->randomBase64String(20);
-    }
+        const socialLoginPagePath = 'social-login';
+        const mname = 'social_login';
+        const fieldName = 'social_id';
+        const fullUserInfo = 'oauth';
+        const registerPath = 'register';
+        const siteUrl = '';
 
-    public function execute( $provider_name = false ) {
-
-        if ( ! $provider_name ) {
-            throw new Wire404Exception( 'Provider "'. $provider_name . '" is not defined' );
-        }
-
-        // check if the provider is enabled in the backoffice
-        $provider_enabled_key = $this->getProviderFieldKey( $provider_name, 'enabled' );
-        if ( ! $this->{$provider_enabled_key} ) {
-            throw new Wire404Exception( 'Provider "'. $provider_name . '" is not enabled' );
+        public static function getModuleInfo()
+        {
+            return array(
+                "title" => __('Social Login', __FILE__),
+                "version" => 10,
+                "summary" => __('Allows users to authenticate through various social APIs using HybridAuth.', __FILE__),
+                "singular" => true,
+                "autoload" => false,
+            );
         }
 
-        $providers = include( 'includes/providers_config.php' );
-        $provider_keys = array();
-        if ( ! isset( $providers[$provider_name] ) ) {
-            throw new Wire404Exception( 'Provider "'. $provider_name . '" is not configurable' );
+        // @see - https://processwire.com/talk/topic/808-variable-for-domain-name/?p=93034
+        public function init()
+        {
+            $port = ($_SERVER['SERVER_PORT'] == 80 || $_SERVER['SERVER_PORT'] == 443) ? '' : ':' . $_SERVER['SERVER_PORT'];
+            $protocol = ($_SERVER['SERVER_PORT'] == 443) ? 'https://' : 'http://';
+            $this->siteUrl = $protocol . $_SERVER['SERVER_NAME'] . $port . '/';
         }
 
-        $provider_label = $providers[$provider_name]['label'];
-
-        foreach ( $providers[$provider_name]['fields']['keys'] as $key => $value ) {
-            $provider_conf_key = $this->getProviderFieldKey( $provider_name, $key );
-            $provider_keys[$key] = $this->{$provider_conf_key};
+        public function getPath()
+        {
+            return dirname(__FILE__);
         }
 
-        $config = array(
-            // the url to HybridAuth Endpoint
-            "base_url" => $this->getHAUrl(),
-            "providers" => array (
-                $provider_label => array (
-                    "enabled" => true,
-                    "keys"    => $provider_keys
-                )
-            ),
-            "debug_mode" => true,
-
-            // to enable logging, set 'debug_mode' to true, then provide here a path of a writable file
-            "debug_file" => "./debug.log",
-        );
-
-
-        require_once( "Hybrid/Auth.php" );
-
-        $hybridauth   = new Hybrid_Auth( $config );
-        $adapter      = $hybridauth->authenticate( $provider_label );
-        $user_profile = $adapter->getUserProfile();
-
-        return $this->processLogin( $provider_name, $user_profile );
-    }
-
-    public function processLogin( $provider_name, $user_profile ) {
-        $social_id    = $provider_name . '-' . $user_profile->identifier;
-        $display_name = $user_profile->displayName;
-
-        // you can capture additional information like email address, profile url,
-        // profile photo, etc from $user_profile object. see hybridauth for additional details.
-
-        $user = $this->users->get( "social_id=$social_id" );
-
-        // Create a random pass to use in login
-        $pass = self::passwordGen();
-
-        if ( $user->id ) {
-            $name = $user->name;
-
-            // User has logged in earlier, change its password
-            $user->of( false );
-            $user->pass = $pass;
-            $user->save();
+        public function getHAUrl()
+        {
+            return $this->siteUrl . wire('pages')->findOne("template=" . self::socialLoginPagePath)->url . '?hybridauth=login';
         }
-        else {
-            $name = self::passwordGen();
 
-            // Create the user
-            $user = new User;
-            $user->name = $name;
-            $user->pass = $pass;
-            if ( property_exists( $user_profile, 'email' ) ) {
-                $user->email = $user_profile->email;
+        static public function getProviderFieldKey($p_key, $key)
+        {
+            return self::mname . '_' . $p_key . '_' . $key;
+        }
+
+        public function getProvidersMenu()
+        {
+            $lis = array();
+
+            $providers = include('includes/providers_config.php');
+            foreach ($providers as $p_key => $provider) {
+                $provider_enabled = $this->getProviderFieldKey($p_key, 'enabled');
+                if ($this->{$provider_enabled}) {
+                    $lis[] = '<a href="?provider=' . $p_key . '" class="fa-' . $p_key . '">' . $provider['label'] . '</a>';
+                }
             }
-            $user->social_id = $social_id;
-            $user->oauth = serialize( $user_profile );
-            $user->addRole( self::socialLoginPagePath );
-            //you can create additional fields like email, profile url, etc and add them here.
-            $user->save();
+
+            return $lis;
         }
 
-        $this->session->login( $name, $pass );
-
-        if ( $redirectUrl = $this->session->get( 'redirect' ) ){
-            $this->session->remove( 'redirect' );
-            $this->session->redirect( $redirectUrl );
+        public function showError($err)
+        {
+            echo '<div class="error"><span>' . $err . '</span></div>';
         }
-        else {
-            $this->session->redirect( $this->pages->get('/')->url );
+
+        /**
+         * Generate a random, temporary password:
+         * 13 chars from uniqid and 7 randomly generated
+         *
+         * @see  https://processwire.com/talk/topic/1716-integrating-a-member-visitor-login-form/?p=15919
+         */
+        public static function passwordGen()
+        {
+            $pass = '';
+            $chars = 'abcdefghjkmnopqrstuvwxyzABCDEFGHJKMNOPQRSTUVWXYZ0123456789';
+            for ($n = 0; $n < 7; $n++) {
+                $pass .= $chars[mt_rand(0, strlen($chars) - 1)];
+            }
+            return sha1(uniqid() . $pass);
+
+            // // Or
+            // $p = new Password();
+            // return $p->randomBase64String(20);
         }
-    }
 
-    public function HybridAuthProcess() {
-        require_once( "Hybrid/Auth.php" );
-        require_once( "Hybrid/Endpoint.php" );
+        public function execute($provider_name = false)
+        {
 
-        Hybrid_Endpoint::process();
-    }
+            if (!$provider_name) {
+                throw new Wire404Exception('Provider "' . $provider_name . '" is not defined');
+            }
 
-    public function showLogin() {
-        // Store requested url in the session, then redirect
-        $this->session->set( 'redirect', $this->page->url );
-        ?>
+            // check if the provider is enabled in the backoffice
+            $provider_enabled_key = $this->getProviderFieldKey($provider_name, 'enabled');
+            if (!$this->{$provider_enabled_key}) {
+                throw new Wire404Exception('Provider "' . $provider_name . '" is not enabled');
+            }
+
+            $providers = include('includes/providers_config.php');
+            $provider_keys = array();
+            if (!isset($providers[$provider_name])) {
+                throw new Wire404Exception('Provider "' . $provider_name . '" is not configurable');
+            }
+
+            $provider_label = $providers[$provider_name]['label'];
+
+            foreach ($providers[$provider_name]['fields']['keys'] as $key => $value) {
+                $provider_conf_key = $this->getProviderFieldKey($provider_name, $key);
+                $provider_keys[$key] = $this->{$provider_conf_key};
+            }
+
+            $config = array(
+                // the url to HybridAuth Endpoint
+                "base_url" => $this->getHAUrl(),
+                "providers" => array(
+                    $provider_label => array(
+                        "enabled" => true,
+                        "keys" => $provider_keys
+                    )
+                ),
+                "debug_mode" => false,
+
+                // to enable logging, set 'debug_mode' to true, then provide here a path of a writable file
+                "debug_file" => "./debug.log",
+            );
+
+
+            $hybridauth = new Hybrid_Auth($config);
+            $adapter = $hybridauth->authenticate($provider_label);
+            $user_profile = $adapter->getUserProfile();
+
+            return $this->processLogin($provider_name, $user_profile);
+        }
+
+        public function processLogin($provider_name, $user_profile)
+        {
+            $social_id = $provider_name . '-' . $user_profile->identifier;
+            $display_name = $user_profile->displayName;
+
+            // you can capture additional information like email address, profile url,
+            // profile photo, etc from $user_profile object. see hybridauth for additional details.
+
+            $user = $this->users->get("social_id=$social_id");
+
+            // Create a random pass to use in login
+            $pass = self::passwordGen();
+
+            if ($user->id) {
+                $name = $user->name;
+
+                // User has logged in earlier, change its password
+                $user->of(false);
+                $user->pass = $pass;
+                $user->save();
+            } else {
+                $name = self::passwordGen();
+
+                // Create the user
+                $user = new User;
+                $user->name = $name;
+                $user->pass = $pass;
+                if (property_exists($user_profile, 'email')) {
+                    $user->email = $user_profile->email;
+                }
+                $user->social_id = $social_id;
+                $user->oauth = serialize($user_profile);
+                $user->addRole(self::socialLoginPagePath);
+                //you can create additional fields like email, profile url, etc and add them here.
+                $user->save();
+            }
+
+            $this->session->login($name, $pass);
+
+            if ($redirectUrl = $this->session->get('redirect')) {
+                $this->session->remove('redirect');
+                $this->session->redirect($redirectUrl);
+            } else {
+                $this->session->redirect($this->pages->get('/')->url);
+            }
+        }
+
+        public function HybridAuthProcess()
+        {
+
+            Hybrid_Endpoint::process();
+        }
+
+        public function showLogin()
+        {
+            // Store requested url in the session, then redirect
+            $this->session->set('redirect', $this->page->url);
+            ?>
 
             <fieldset>
                 <form action='./' method='post'>
-                    <?php if ( $this->input->post->user ) echo "<h2 class='error'>Login failed</h2>"; ?>
+                    <?php if ($this->input->post->user) echo "<h2 class='error'>Login failed</h2>"; ?>
 
-                    <p><label>Email <input type='text' name='slogin_email' /></label></p>
-                    <p><label>Password <input type='password' name='slogin_pass' /></label></p>
-                    <p><input type='submit' name='slogin_submit' value='Login' /></p>
+                    <p><label>Email <input type='text' name='slogin_email'/></label></p>
+                    <p><label>Password <input type='password' name='slogin_pass'/></label></p>
+                    <p><input type='submit' name='slogin_submit' value='Login'/></p>
                 </form>
             </fieldset>
 
-        <?php $providers = $this->getProvidersMenu(); ?>
+            <?php $providers = $this->getProvidersMenu(); ?>
 
-        <?php if ( ! empty( $providers ) ) : ?>
+            <?php if (!empty($providers)) : ?>
 
             <fieldset>
-                <legend><?php echo __( 'Or use a social service' ); ?></legend>
+                <legend><?php echo __('Or use a social service'); ?></legend>
 
                 <ul class="social-services">
-                    <li><?php echo implode( '</li><li>', $providers ); ?></li>
+                    <li><?php echo implode('</li><li>', $providers); ?></li>
                 </ul>
             </fieldset>
 
         <?php endif; ?>
 
             <fieldset>
-                <legend><?php echo __( 'Or register' ); ?></legend>
-                
-                <a href="<?php echo $this->config->urls->root . self::registerPath; ?>"><?php echo __( 'Register' ); ?></a>
+                <legend><?php echo __('Or register'); ?></legend>
+
+                <a href="<?php echo $this->config->urls->root . self::registerPath; ?>"><?php echo __('Register'); ?></a>
             </fieldset>
 
-        <?php
-    }
+            <?php
+        }
 
 
-    public function showProfile() {
-        require_once( "classes/SocialLoginProcessProfile.php" );
+        public function showProfile()
+        {
+            require_once("classes/SocialLoginProcessProfile.php");
 
-        $SocialLoginProcessProfile = new \ProcessWire\SocialLoginProcessProfile( $this->enabled_profile_user_fields );
-        $SocialLoginProcessProfile->process();
-    }
+            $SocialLoginProcessProfile = new \ProcessWire\SocialLoginProcessProfile($this->enabled_profile_user_fields);
+            $SocialLoginProcessProfile->process();
+        }
 
-    public function showRegistration() {
-        require_once( "classes/SocialLoginProcessRegistration.php" );
+        public function showRegistration()
+        {
+            require_once("classes/SocialLoginProcessRegistration.php");
 
-        $SocialLoginProcessRegistration = new \ProcessWire\SocialLoginProcessRegistration( $this->enabled_registration_user_fields );
-        $SocialLoginProcessRegistration->process();
-    }
+            $SocialLoginProcessRegistration = new \ProcessWire\SocialLoginProcessRegistration($this->enabled_registration_user_fields);
+            $SocialLoginProcessRegistration->process();
+        }
 
-    /* * * * * * Module Configuration * * * * * */
+        /* * * * * * Module Configuration * * * * * */
 
-    static public function getModuleConfigInputfields( Array $data ) {
-        $fields = new InputfieldWrapper();
-        $modules = wire('modules');
+        static public function getModuleConfigInputfields(Array $data)
+        {
+            $fields = new InputfieldWrapper();
+            $modules = wire('modules');
 
-        // -- Add a fieldset with the main options
-        $fieldset = $modules->get( 'InputfieldFieldset' );
-        $fieldset->label = __( 'Main options' );
-        $fieldset->attr( 'id+name', 'social_login_options' );
+            // -- Add a fieldset with the main options
+            $fieldset = $modules->get('InputfieldFieldset');
+            $fieldset->label = __('Main options');
+            $fieldset->attr('id+name', 'social_login_options');
 
-        $field = $modules->get( 'InputfieldCheckbox' );
-        $field->label = __( 'Enable Activation Code when Registering (an email with the activation code will be sent to the user)' );
-        $field->attr( 'id+name', 'enabled_activation_code' );
-        $field->attr( 'value', 1 );
-        $field->attr( 'checked', empty( $data['enabled_activation_code'] ) ? '' : 'checked' );
-        $fieldset->append( $field );
+            $field = $modules->get('InputfieldCheckbox');
+            $field->label = __('Enable Activation Code when Registering (an email with the activation code will be sent to the user)');
+            $field->attr('id+name', 'enabled_activation_code');
+            $field->attr('value', 1);
+            $field->attr('checked', empty($data['enabled_activation_code']) ? '' : 'checked');
+            $fieldset->append($field);
 
-        $field = $modules->get( 'InputfieldCheckbox' );
-        $field->label = __( 'Enable to use the user email as username (and pagename)' );
-        $field->description = __( 'If left unchecked (default), the username will be created using a random and unique string.' );
-        $field->attr( 'id+name', 'use_email_as_username' );
-        $field->attr( 'value', 0 );
-        $field->attr( 'checked', empty( $data['use_email_as_username'] ) ? '' : 'checked' );
-        $fieldset->append( $field );
+            $field = $modules->get('InputfieldCheckbox');
+            $field->label = __('Enable to use the user email as username (and pagename)');
+            $field->description = __('If left unchecked (default), the username will be created using a random and unique string.');
+            $field->attr('id+name', 'use_email_as_username');
+            $field->attr('value', 0);
+            $field->attr('checked', empty($data['use_email_as_username']) ? '' : 'checked');
+            $fieldset->append($field);
 
-        $fields->add( $fieldset );
+            $fields->add($fieldset);
 
-        // -- Add a fieldset with the registration email option
-        $fieldset = $modules->get( 'InputfieldFieldset' );
-        $fieldset->label = __( 'Registration Options' );
-        $fieldset->attr( 'id+name', 'social_login_registration_options' );
-        $fieldset->showIf = "enabled_activation_code=1";
+            // -- Add a fieldset with the registration email option
+            $fieldset = $modules->get('InputfieldFieldset');
+            $fieldset->label = __('Registration Options');
+            $fieldset->attr('id+name', 'social_login_registration_options');
+            $fieldset->showIf = "enabled_activation_code=1";
 
-        $field = $modules->get( "InputfieldText" );
-        $field->label = __( 'Secret activation key' );
-        $field->description = __( 'This secret key will be attached to a salt (a random and unique string) when creating the activation code.' );
-        $field->attr( 'id+name','social_login_registration_secret');
-        $field->attr( 'value', empty( $data['social_login_registration_secret'] ) ? 'mySeCreTK3y' : $data['social_login_registration_secret'] );
-        $fieldset->append( $field );
+            $field = $modules->get("InputfieldText");
+            $field->label = __('Secret activation key');
+            $field->description = __('This secret key will be attached to a salt (a random and unique string) when creating the activation code.');
+            $field->attr('id+name', 'social_login_registration_secret');
+            $field->attr('value', empty($data['social_login_registration_secret']) ? 'mySeCreTK3y' : $data['social_login_registration_secret']);
+            $fieldset->append($field);
 
-        $field = $modules->get( "InputfieldText" );
-        $field->label = __( 'Email From' );
-        $field->attr( 'id+name','social_login_registration_email_from');
-        $field->attr( 'value', empty( $data['social_login_registration_email_from'] ) ? '' : $data['social_login_registration_email_from'] );
-        $fieldset->append( $field );
+            $field = $modules->get("InputfieldText");
+            $field->label = __('Email From');
+            $field->attr('id+name', 'social_login_registration_email_from');
+            $field->attr('value', empty($data['social_login_registration_email_from']) ? '' : $data['social_login_registration_email_from']);
+            $fieldset->append($field);
 
-        $field = $modules->get( "InputfieldText" );
-        $field->label = __( 'Email Subject' );
-        $field->attr( 'id+name','social_login_registration_email_subject' );
-        $field->attr( 'value', empty( $data['social_login_registration_email_subject'] ) ? '' : $data['social_login_registration_email_subject'] );
-        $fieldset->append( $field );
+            $field = $modules->get("InputfieldText");
+            $field->label = __('Email Subject');
+            $field->attr('id+name', 'social_login_registration_email_subject');
+            $field->attr('value', empty($data['social_login_registration_email_subject']) ? '' : $data['social_login_registration_email_subject']);
+            $fieldset->append($field);
 
-        $field = $modules->get( "InputfieldTextarea" );
-        $field->label = __( 'Email Body' );
-        $field->description = __( 'The following tokens will be replaced when found:' );
-        $field->description.= ' {{activation-link}} ';
-        $field->attr( 'id+name','social_login_registration_email_body' );
-        $field->attr( 'value', empty( $data['social_login_registration_email_body'] ) ? '' : $data['social_login_registration_email_body'] );
-        $fieldset->append( $field );
+            $field = $modules->get("InputfieldTextarea");
+            $field->label = __('Email Body');
+            $field->description = __('The following tokens will be replaced when found:');
+            $field->description .= ' {{activation-link}} ';
+            $field->attr('id+name', 'social_login_registration_email_body');
+            $field->attr('value', empty($data['social_login_registration_email_body']) ? '' : $data['social_login_registration_email_body']);
+            $fieldset->append($field);
 
-        $fields->add( $fieldset );
+            $fields->add($fieldset);
 
 
-        $providers_fieldset = $modules->get( 'InputfieldFieldset' );
-        $providers_fieldset->label = 'Social Providers'; 
-        $providers_fieldset->attr( 'id+name', 'social_providers' );
+            $providers_fieldset = $modules->get('InputfieldFieldset');
+            $providers_fieldset->label = 'Social Providers';
+            $providers_fieldset->attr('id+name', 'social_providers');
 
-        // -- Generate configuratin fields based on the array of providers
-        $providers = include( 'includes/providers_config.php' );
-        foreach ( $providers as $p_key => $provider ) {
-            $provider_fieldset = $modules->get( 'InputfieldFieldset' );
-            $provider_fieldset->label = $provider['label'];
-            $provider_fieldset->attr( 'id+name', self::mname.'_'. $p_key );
-            $provider_fieldset->icon = 'fa-'.$p_key; // font-awesome
+            // -- Generate configuratin fields based on the array of providers
+            $providers = include('includes/providers_config.php');
+            foreach ($providers as $p_key => $provider) {
+                $provider_fieldset = $modules->get('InputfieldFieldset');
+                $provider_fieldset->label = $provider['label'];
+                $provider_fieldset->attr('id+name', self::mname . '_' . $p_key);
+                $provider_fieldset->icon = 'fa-' . $p_key; // font-awesome
 
-            $enabled_field = self::getProviderFieldKey( $p_key, 'enabled' );
-            if ( ! isset( $data[$enabled_field] ) ) {
-                $collapsed = true;
-            }
-            else {
-                $collapsed = $data[$enabled_field] ? false : true;
-            }
+                $enabled_field = self::getProviderFieldKey($p_key, 'enabled');
+                if (!isset($data[$enabled_field])) {
+                    $collapsed = true;
+                } else {
+                    $collapsed = $data[$enabled_field] ? false : true;
+                }
 
-            $provider_fieldset->collapsed = $collapsed;
+                $provider_fieldset->collapsed = $collapsed;
 
-            foreach ( $provider['fields'] as $key => $value ) {
-                if ( 'keys' == $key ) {
-                    foreach ( $provider['fields']['keys'] as $sub_key => $sub_value ) {
-                        $provider_field = self::getFieldConfig( $p_key, $sub_key, $sub_value, $data );
-                        $provider_fieldset->append( $provider_field );
+                foreach ($provider['fields'] as $key => $value) {
+                    if ('keys' == $key) {
+                        foreach ($provider['fields']['keys'] as $sub_key => $sub_value) {
+                            $provider_field = self::getFieldConfig($p_key, $sub_key, $sub_value, $data);
+                            $provider_fieldset->append($provider_field);
+                        }
+                    } else {
+                        $provider_field = self::getFieldConfig($p_key, $key, $value, $data);
+                        $provider_fieldset->append($provider_field);
                     }
                 }
-                else {
-                    $provider_field = self::getFieldConfig( $p_key, $key, $value, $data );
-                    $provider_fieldset->append( $provider_field );
+
+                $providers_fieldset->append($provider_fieldset);
+            }
+
+            $fields->add($providers_fieldset);
+
+            // Add a fieldset with checkboxes to allow the choice of desired user fields for the profile.
+
+            $fieldset = $modules->get('InputfieldFieldset');
+            $fieldset->label = 'Enabled Profile Fields';
+            $fieldset->attr('id+name', 'enabled_profile_fields');
+
+            $cbs_key = 'enabled_profile_user_fields';
+            $field = $modules->get('InputfieldCheckboxes');
+            $field->attr('id+name', $cbs_key);
+            $field->label = 'Select user fields to be shown under the profile page';
+
+            $wuser = wire('user');
+            foreach ($wuser->fields as $_field) {
+                $field_lab = isset($_field->label) && !empty($_field->label) ? $_field->label : $_field->name;
+                $_data_cbs_key = isset($data[$cbs_key]) ? $data[$cbs_key] : array();
+                $is_checked = self::getCheckedFieldOnCheckboxes($_data_cbs_key, $_field->name);
+                $disabled = false;
+
+                if ($_field->name == self::fieldName || $_field->name == self::fullUserInfo || $_field->name == 'roles') {
+                    $field_lab .= " (disallowed)";
+                    $is_checked = false;
+                    $disabled = true;
+                }
+
+                /* @todo - If i leave "disabled" attr active, checked fields does not seems to be recognized. ** */
+
+                $attr = array('checked' => $is_checked ? 'checked' : '', /*'disabled' => $disabled ? 'disabled' : ''*/);
+                $field->addOption($_field->name, $field_lab, $attr);
+            }
+            $fieldset->append($field);
+            $fields->add($fieldset);
+
+
+            // Add a fieldset with checkboxes to allow the choice of desired user fields for the registration.
+
+            $registration_fields_fieldset = $modules->get('InputfieldFieldset');
+            $registration_fields_fieldset->label = 'Enabled Registration Fields';
+            $registration_fields_fieldset->attr('id+name', 'enabled_registration_fields');
+
+            $cbs_key = 'enabled_registration_user_fields';
+            $field = $modules->get('InputfieldCheckboxes');
+            $field->attr('id+name', $cbs_key);
+            $field->label = 'Select user fields to be shown under the registration page';
+
+            $wuser = wire('user');
+            foreach ($wuser->fields as $_field) {
+                $field_lab = isset($_field->label) && !empty($_field->label) ? $_field->label : $_field->name;
+                $_data_cbs_key = isset($data[$cbs_key]) ? $data[$cbs_key] : array();
+                $is_checked = self::getCheckedFieldOnCheckboxes($_data_cbs_key, $_field->name);
+                $disabled = false;
+
+                if ($_field->name == 'email' || $_field->name == 'pass') {
+                    $field_lab .= " (required)";
+                    $is_checked = true;
+                    $disabled = true;
+                }
+
+                if ($_field->name == self::fieldName || $_field->name == self::fullUserInfo || $_field->name == 'roles') {
+                    $field_lab .= " (disallowed)";
+                    $is_checked = false;
+                    $disabled = true;
+                }
+
+                $attr = array('checked' => $is_checked ? 'checked' : '', /*'disabled' => $disabled ? 'disabled' : ''*/);
+                $field->addOption($_field->name, $field_lab, $attr);
+            }
+            $registration_fields_fieldset->append($field);
+            $fields->add($registration_fields_fieldset);
+
+            $field = $modules->get("InputfieldPageListSelect");
+            $field->attr('id+name', self::mname . '_redirectPage');
+
+            if (isset($data['redirectPage'])) {
+                $field->attr('value', $data['redirectPage']);
+            }
+
+            $field->label = "Page where user is redirected after succesful login";
+            $fields->add($field);
+
+            return $fields;
+        }
+
+        static private function getCheckedFieldOnCheckboxes($cbsName, $optName)
+        {
+            if (is_array($cbsName)) foreach ($cbsName as $opt) if ($opt == $optName) return true;
+            return false;
+        }
+
+        static private function getFieldConfig($p_key, $key, $value, $data)
+        {
+            $field_key = self::getProviderFieldKey($p_key, $key);
+
+            $field = wire('modules')->get($value['type']);
+
+            $field->attr('id+name', $field_key);
+
+            if (isset($data[$field_key])) {
+                $field->attr('value', $data[$field_key]);
+            }
+
+            if ("InputfieldCheckbox" == $value['type']) {
+                $field->attr('checked', empty($data[$field_key]) ? '' : 'checked');
+            }
+
+            $field->label = $value['label'];
+            $field->description = $value['description'];
+
+            return $field;
+        }
+
+        public function install()
+        {
+            $name = self::socialLoginPagePath;
+            $fieldName = self::fieldName;
+            $fullUserInfo = self::fullUserInfo;
+
+            $this->_create_template_and_page($name, "Social Login");
+            $this->_create_template_and_page(self::registerPath, "Register");
+
+            $field = $this->fields->get($fieldName);
+            if (!$field) {
+                // Create hidden inputfield
+                $input = new InputfieldText;
+                $input->set('collapsed', Inputfield::collapsedHidden);
+
+                // Create field called social_id and set details and inputfield
+                $new_field = new Field();
+                $new_field->type = $this->modules->get("FieldtypeText");
+                $new_field->name = $fieldName;
+                $new_field->label = 'Social ID';
+                $new_field->description = 'Stores social id for user';
+                $new_field->inputfield = $input;
+                $new_field->save();
+
+                // Add the field to user fieldgroup (basically means user template in this context)
+                $user_fieldgroup = $this->fieldgroups->get('user');
+                $user_fieldgroup->add($new_field);
+                $user_fieldgroup->save();
+            }
+
+            $field = $this->fields->get($fullUserInfo);
+            if (!$field) {
+                // Create hidden inputfield
+                $input = new InputfieldText;
+                $input->set('collapsed', Inputfield::collapsedHidden);
+
+                // Create field called social_id and set details and inputfield
+                $new_field = new Field();
+                $new_field->type = $this->modules->get("FieldtypeText");
+                $new_field->name = $fullUserInfo;
+                $new_field->label = 'Social Profile Full';
+                $new_field->description = 'Stores the full social profile for user';
+                $new_field->inputfield = $input;
+                $new_field->save();
+
+                // Add the field to user fieldgroup (basically means user template in this context)
+                $user_fieldgroup = $this->fieldgroups->get('user');
+                $user_fieldgroup->add($new_field);
+                $user_fieldgroup->save();
+            }
+
+            $field = $this->fields->get('activation_key');
+            if (!$field) {
+                // Create hidden inputfield
+                $input = new InputfieldText;
+                $input->set('collapsed', Inputfield::collapsedHidden);
+
+                // Create field called social_id and set details and inputfield
+                $new_field = new Field();
+                $new_field->type = $this->modules->get("FieldtypeText");
+                $new_field->name = 'activation_key';
+                $new_field->label = 'Activation Key';
+                $new_field->description = 'Stores the activation key for user or 0 if activated';
+                $new_field->inputfield = $input;
+                $new_field->save();
+
+                // Add the field to user fieldgroup (basically means user template in this context)
+                $user_fieldgroup = $this->fieldgroups->get('user');
+                $user_fieldgroup->add($new_field);
+                $user_fieldgroup->save();
+            }
+
+            $role = $this->roles->get($name);
+            if (!$role->id) {
+                $this->roles->add($name);
+                $this->message("Created a role called $name");
+            }
+        }
+
+        private function _create_template_and_page($name, $pageTitle)
+        {
+            $fieldgroup = $this->fieldgroups->get($name);
+            if (!$fieldgroup) {
+                $fieldgroup = new Fieldgroup();
+                $fieldgroup->name = $name;
+                $title = $this->fields->get('title');
+                if ($title) $fieldgroup->add($title);
+                $fieldgroup->save();
+            }
+
+            $template = $this->templates->get($name);
+            if (!$template) {
+                $template = new Template();
+                $template->name = $name;
+                $template->fieldgroup = $fieldgroup;
+                $template->save();
+                $this->message("Installed template $name");
+
+                // Copy template to the templates folder
+                $basename = $name . ".php";
+                $src = $this->getPath() . '/templates/' . $basename;
+                $dst = $this->config->paths->templates . $basename;
+
+                if (!file_exists($dst)) {
+                    ini_set('track_errors', 1);
+                    if (copy($src, $dst)) {
+                        // chmod( $dst, 0755 );
+                        $this->message("Installed template file $basename");
+                    } else {
+                        $this->error("Templates directory is not writable so we were unable to auto-install the $basename template file.");
+                        $this->error("To complete the installation please copy $basename from $src to $dst. Error: $php_errormsg");
+                    }
                 }
             }
 
-            $providers_fieldset->append( $provider_fieldset );
-        }
-
-        $fields->add( $providers_fieldset );
-
-        // Add a fieldset with checkboxes to allow the choice of desired user fields for the profile.
-        
-        $fieldset = $modules->get( 'InputfieldFieldset' );
-        $fieldset->label = 'Enabled Profile Fields';
-        $fieldset->attr( 'id+name', 'enabled_profile_fields' );
-
-        $cbs_key = 'enabled_profile_user_fields';
-        $field = $modules->get( 'InputfieldCheckboxes' );
-        $field->attr( 'id+name', $cbs_key );
-        $field->label = 'Select user fields to be shown under the profile page';
-
-        $wuser = wire('user');
-        foreach ( $wuser->fields as $_field ) {
-            $field_lab     = isset( $_field->label ) && ! empty( $_field->label ) ? $_field->label : $_field->name;
-            $_data_cbs_key = isset( $data[$cbs_key] ) ? $data[$cbs_key] : array();
-            $is_checked    = self::getCheckedFieldOnCheckboxes( $_data_cbs_key, $_field->name );
-            $disabled      = false;
-
-            if ( $_field->name == self::fieldName || $_field->name == self::fullUserInfo || $_field->name == 'roles' ) {
-                $field_lab .= " (disallowed)";
-                $is_checked = false;
-                $disabled   = true;
+            $page = $this->pages->get("/$name/");
+            if (!$page->id) {
+                $page = new Page();
+                $page->template = $template;
+                $page->parent = '/';
+                $page->name = $name;
+                $page->title = $pageTitle;
+                $page->save();
+                $this->message("Installed page " . $page->path);
             }
 
-            /* @todo - If i leave "disabled" attr active, checked fields does not seems to be recognized. ***/
-
-            $attr = array( 'checked' => $is_checked ? 'checked' : '', /*'disabled' => $disabled ? 'disabled' : ''*/ );
-            $field->addOption( $_field->name, $field_lab, $attr );
+            return array($template, $page);
         }
-        $fieldset->append( $field );
-        $fields->add( $fieldset );
 
+        public function uninstall()
+        {
+            $name = self::socialLoginPagePath;
+            $fieldName = self::fieldName;
 
-        // Add a fieldset with checkboxes to allow the choice of desired user fields for the registration.
+            $this->_delete_template_and_page($name);
+            $this->_delete_template_and_page(self::registerPath);
 
-        $registration_fields_fieldset = $modules->get( 'InputfieldFieldset' );
-        $registration_fields_fieldset->label = 'Enabled Registration Fields';
-        $registration_fields_fieldset->attr( 'id+name', 'enabled_registration_fields' );
+            // @todo -- this does not seems to work
+            //
+            // $field = $this->fields->get( $fieldName );
+            // if ( $field ) {
+            //  $field->flags = Field::flagSystemOverride;
+            //  $field->flags = 0;
+            //  $this->message( "Removing field: {$field->name}" );
+            //  $this->fields->delete($field);
+            // }
+        }
 
-        $cbs_key = 'enabled_registration_user_fields';
-        $field = $modules->get( 'InputfieldCheckboxes' );
-        $field->attr( 'id+name', $cbs_key );
-        $field->label = 'Select user fields to be shown under the registration page';
-
-        $wuser = wire('user');
-        foreach ( $wuser->fields as $_field ) {
-            $field_lab     = isset( $_field->label ) && ! empty( $_field->label ) ? $_field->label : $_field->name;
-            $_data_cbs_key = isset( $data[$cbs_key] ) ? $data[$cbs_key] : array();
-            $is_checked    = self::getCheckedFieldOnCheckboxes( $_data_cbs_key, $_field->name );
-            $disabled      = false;
-
-            if ( $_field->name == 'email' || $_field->name == 'pass' ) {
-                $field_lab .= " (required)";
-                $is_checked = true;
-                $disabled   = true;
+        /**
+         * Delete things in reverse order.
+         */
+        private function _delete_template_and_page($name)
+        {
+            // Remove files from the templates folder
+            $dst = $this->config->paths->templates . $name . ".php";
+            if (file_exists($dst)) {
+                $this->message("Unlink template file: $dst");
+                unlink($dst);
             }
 
-            if ( $_field->name == self::fieldName || $_field->name == self::fullUserInfo || $_field->name == 'roles' ) {
-                $field_lab .= " (disallowed)";
-                $is_checked = false;
-                $disabled   = true;
+            // Remove pages before template
+            $page = $this->pages->get("/$name/");
+            if ($page->id) {
+                $page->status = Page::statusSystemOverride;
+                $page->status = 0;
+                $this->message("Removing page: {$page->path}");
+                $page->delete();
             }
 
-            $attr = array( 'checked' => $is_checked ? 'checked' : '', /*'disabled' => $disabled ? 'disabled' : ''*/ );
-            $field->addOption( $_field->name, $field_lab, $attr );
-        }
-        $registration_fields_fieldset->append( $field );
-        $fields->add( $registration_fields_fieldset );
+            // Remove template before fieldgroups
+            $template = $this->templates->get($name);
+            if ($template) {
+                $template->flags = Template::flagSystemOverride;
+                $template->flags = 0;
+                $this->message("Removing template: {$template->name}");
+                $this->templates->delete($template);
+            }
 
-        $field = $modules->get( "InputfieldPageListSelect" );
-        $field->attr( 'id+name', self::mname.'_redirectPage' );
-
-        if ( isset( $data['redirectPage'] ) ) {
-            $field->attr( 'value', $data['redirectPage'] );
-        }
-
-        $field->label = "Page where user is redirected after succesful login";
-        $fields->add( $field );
-
-        return $fields;
-    }
-
-    static private function getCheckedFieldOnCheckboxes( $cbsName, $optName ) {
-        if ( is_array( $cbsName ) ) foreach ( $cbsName as $opt ) if ( $opt == $optName ) return true;
-        return false;
-    }
-
-    static private function getFieldConfig( $p_key, $key, $value, $data ) {
-        $field_key = self::getProviderFieldKey( $p_key, $key );
-
-        $field = wire('modules')->get( $value['type'] );
-
-        $field->attr( 'id+name', $field_key );
-
-        if ( isset( $data[$field_key] )  ) {
-            $field->attr( 'value', $data[$field_key] );
-        }
-
-        if ( "InputfieldCheckbox" == $value['type'] ) {
-            $field->attr( 'checked', empty( $data[$field_key] ) ? '' : 'checked' );
-        }
-
-        $field->label       = $value['label'];
-        $field->description = $value['description'];
-
-        return $field;
-    }
-
-    public function install() {
-        $name         = self::socialLoginPagePath;
-        $fieldName    = self::fieldName;
-        $fullUserInfo = self::fullUserInfo;
-
-        $this->_create_template_and_page( $name, "Social Login" );
-        $this->_create_template_and_page( self::registerPath, "Register" );
-
-        $field = $this->fields->get( $fieldName );
-        if ( ! $field ) {
-            // Create hidden inputfield
-            $input = new InputfieldText;
-            $input->set( 'collapsed', Inputfield::collapsedHidden );
-
-            // Create field called social_id and set details and inputfield
-            $new_field = new Field();
-            $new_field->type        = $this->modules->get( "FieldtypeText" );
-            $new_field->name        = $fieldName;
-            $new_field->label       = 'Social ID';
-            $new_field->description = 'Stores social id for user';
-            $new_field->inputfield  = $input;
-            $new_field->save();
-
-            // Add the field to user fieldgroup (basically means user template in this context)
-            $user_fieldgroup = $this->fieldgroups->get( 'user' );
-            $user_fieldgroup->add( $new_field );
-            $user_fieldgroup->save();
-        }
-
-        $field = $this->fields->get( $fullUserInfo );
-        if ( ! $field ) {
-            // Create hidden inputfield
-            $input = new InputfieldText;
-            $input->set( 'collapsed', Inputfield::collapsedHidden );
-
-            // Create field called social_id and set details and inputfield
-            $new_field = new Field();
-            $new_field->type        = $this->modules->get( "FieldtypeText" );
-            $new_field->name        = $fullUserInfo;
-            $new_field->label       = 'Social Profile Full';
-            $new_field->description = 'Stores the full social profile for user';
-            $new_field->inputfield  = $input;
-            $new_field->save();
-
-            // Add the field to user fieldgroup (basically means user template in this context)
-            $user_fieldgroup = $this->fieldgroups->get( 'user' );
-            $user_fieldgroup->add( $new_field );
-            $user_fieldgroup->save();
-        }
-
-        $field = $this->fields->get( 'activation_key' );
-        if ( ! $field ) {
-            // Create hidden inputfield
-            $input = new InputfieldText;
-            $input->set( 'collapsed', Inputfield::collapsedHidden );
-
-            // Create field called social_id and set details and inputfield
-            $new_field = new Field();
-            $new_field->type        = $this->modules->get( "FieldtypeText" );
-            $new_field->name        = 'activation_key';
-            $new_field->label       = 'Activation Key';
-            $new_field->description = 'Stores the activation key for user or 0 if activated';
-            $new_field->inputfield  = $input;
-            $new_field->save();
-
-            // Add the field to user fieldgroup (basically means user template in this context)
-            $user_fieldgroup = $this->fieldgroups->get( 'user' );
-            $user_fieldgroup->add( $new_field );
-            $user_fieldgroup->save();
-        }
-
-        $role = $this->roles->get( $name );
-        if ( ! $role->id ) {
-            $this->roles->add( $name );
-            $this->message( "Created a role called $name" );
-        }
-    }
-
-    private function _create_template_and_page( $name, $pageTitle ) {
-        $fieldgroup = $this->fieldgroups->get( $name );
-        if ( ! $fieldgroup ) {
-            $fieldgroup = new Fieldgroup();
-            $fieldgroup->name = $name;
-            $title = $this->fields->get( 'title' );
-            if ( $title ) $fieldgroup->add( $title );
-            $fieldgroup->save();
-        }
-
-        $template = $this->templates->get( $name );
-        if ( ! $template ) {
-            $template = new Template();
-            $template->name         = $name;
-            $template->fieldgroup   = $fieldgroup;
-            $template->save();
-            $this->message( "Installed template $name" );
-
-            // Copy template to the templates folder
-            $basename = $name . ".php";
-            $src = $this->getPath().'/templates/'.$basename;
-            $dst = $this->config->paths->templates . $basename;
-
-            if ( ! file_exists( $dst ) ) {
-                ini_set( 'track_errors', 1 );
-                if ( copy( $src, $dst ) ) {
-                    // chmod( $dst, 0755 );
-                    $this->message( "Installed template file $basename" );
-                }
-                else {
-                    $this->error( "Templates directory is not writable so we were unable to auto-install the $basename template file." );
-                    $this->error( "To complete the installation please copy $basename from $src to $dst. Error: $php_errormsg" );
-                }
+            $fieldgroup = $this->fieldgroups->get($name);
+            if ($fieldgroup) {
+                $this->message("Removing fieldgroup: $fieldgroup");
+                $this->fieldgroups->delete($fieldgroup);
             }
         }
 
-        $page = $this->pages->get( "/$name/" );
-        if ( ! $page->id ) {
-            $page = new Page();
-            $page->template = $template;
-            $page->parent   = '/';
-            $page->name     = $name;
-            $page->title    = $pageTitle;
-            $page->save();
-            $this->message( "Installed page ".$page->path );
-        }
-
-        return array( $template, $page );
     }
-
-    public function uninstall() {
-        $name      = self::socialLoginPagePath;
-        $fieldName = self::fieldName;
-
-        $this->_delete_template_and_page( $name );
-        $this->_delete_template_and_page( self::registerPath );
-
-        // @todo -- this does not seems to work
-        // 
-        // $field = $this->fields->get( $fieldName );
-        // if ( $field ) {
-        //  $field->flags = Field::flagSystemOverride;
-        //  $field->flags = 0;
-        //  $this->message( "Removing field: {$field->name}" );
-        //  $this->fields->delete($field);
-        // }
-    }
-
-    /**
-     * Delete things in reverse order.
-     */
-    private function _delete_template_and_page( $name ) {
-        // Remove files from the templates folder
-        $dst = $this->config->paths->templates . $name . ".php";
-        if ( file_exists( $dst ) ) {
-            $this->message( "Unlink template file: $dst" ); 
-            unlink( $dst );
-        }
-
-        // Remove pages before template
-        $page = $this->pages->get( "/$name/" );
-        if ( $page->id ) {
-            $page->status = Page::statusSystemOverride; 
-            $page->status = 0;
-            $this->message( "Removing page: {$page->path}" ); 
-            $page->delete();
-        }
-
-        // Remove template before fieldgroups
-        $template = $this->templates->get( $name );
-        if ( $template ) {
-            $template->flags = Template::flagSystemOverride; 
-            $template->flags = 0;
-            $this->message( "Removing template: {$template->name}" ); 
-            $this->templates->delete( $template );
-        }
-
-        $fieldgroup = $this->fieldgroups->get( $name );
-        if ( $fieldgroup ) {
-            $this->message( "Removing fieldgroup: $fieldgroup" ); 
-            $this->fieldgroups->delete( $fieldgroup );
-        }
-    }
-
-}
