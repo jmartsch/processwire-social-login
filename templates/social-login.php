@@ -68,14 +68,15 @@ else:
     <div class="content">
 
         <?php
-//            echo $_SERVER['HTTP_REFERER'];
-
+            // if user is logged in show a welcome message and his profile
             if ($user->isLoggedin()) {
+                $username = $user->email;
                 if ($user->oauth)
                 {
                     $oauth = unserialize($user->oauth);
+                    $username = $oauth->displayName;
                 }
-                echo '<h1>' . __('Welcome') . ' ' . $oauth->displayName . '</h1>';
+                echo '<h1>' . __('Welcome') . ' ' . $username . '</h1>';
 
                 $profile = $SocialLogin->showProfile();
                 if ($profile) {
@@ -88,8 +89,46 @@ else:
                 <a class='action' href='<?php echo $config->urls->admin; ?>login/logout/'><?php echo __('Logout'); ?></a><?php
 
             } else {
+                // else show the login form
+                // you could use the internal function via
+                // echo $SocialLogin->showLogin()
+                // or customize the form to your likings below
+                $this->session->set('redirect', $this->page->url);
+                ?>
+                <fieldset>
+                <form action='./' method='post'>
+                    <?php if ($this->input->post->user) echo "<h2 class='error'>Login failed</h2>"; ?>
 
-                $profile = $SocialLogin->showLogin();
+                    <p><label>Email <input type='text' name='slogin_email'/></label></p>
+                    <p><label>Password <input type='password' name='slogin_pass'/></label></p>
+                    <p><input type='submit' name='slogin_submit' value='Login'/></p>
+                </form>
+                </fieldset>
+                <?php $providers = $SocialLogin->getProvidersMenu(); ?>
+
+                <?php if (!empty($providers)) : ?>
+
+                    <fieldset>
+                        <legend><?php echo __('Or use a social service'); ?></legend>
+
+                        <ul class="social-services">
+                            <?php
+                                foreach ($providers as $provider) {
+                                    echo "<li>$provider</li>";
+
+                                }
+
+                            ?>
+                        </ul>
+                    </fieldset>
+
+                <?php endif; ?>
+                <fieldset>
+                    <legend><?php echo __('Or register'); ?></legend>
+
+                    <a href="<?php echo $this->config->urls->root . $SocialLogin::registerPath; ?>"><?php echo __('Register'); ?></a>
+                </fieldset>
+                <?php
             }
         ?>
 

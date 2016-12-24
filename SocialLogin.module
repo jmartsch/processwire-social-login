@@ -71,7 +71,7 @@ class SocialLogin extends WireData implements Module, ConfigurableModule
         foreach ($providers as $p_key => $provider) {
             $provider_enabled = $this->getProviderFieldKey($p_key, 'enabled');
             if ($this->{$provider_enabled}) {
-                $lis[] = '<a href="?provider=' . $p_key . '" class="fa-' . $p_key . '">' . $provider['label'] . '</a>';
+                $lis[] = '<a href="?provider=' . $p_key . '"><i class="fa fa-' . $p_key . '"></i> ' . $provider['label'] . '</a>';
             }
         }
 
@@ -252,7 +252,13 @@ class SocialLogin extends WireData implements Module, ConfigurableModule
             <legend><?php echo __('Or use a social service'); ?></legend>
 
             <ul class="social-services">
-                <li><?php echo implode('</li><li>', $providers); ?></li>
+                <?php
+                    foreach ($providers as $provider) {
+                        echo "<li>$provider</li>";
+
+                    }
+
+                ?>
             </ul>
         </fieldset>
 
