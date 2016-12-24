@@ -24,13 +24,13 @@ class SocialLoginProcessProfile extends ProcessProfile
         $this->user = $this->wire('user');
         $this->wire('processHeadline', $this->_("Profile:") . ' ' . $this->user->name); // Primary Headline (precedes the username)
 
-        $form = $this->buildForm();
+        $this->form = $this->buildForm();
 
         if ($this->input->post->submit_save_profile) {
             $this->processInput($form);
             $this->session->redirect("./");
         } else {
-            echo $form->render();
+            return $this->form;
         }
     }
 
@@ -45,7 +45,7 @@ class SocialLoginProcessProfile extends ProcessProfile
         $form->attr('action', './');
         $form->attr('method', 'post');
         $form->attr('enctype', 'multipart/form-data');
-        $form->attr('autocomplete', 'off');
+//        $form->attr('autocomplete', 'off');
 
         if (!empty($this->profileFields)) {
             foreach ($this->profileFields as $field) {

@@ -273,7 +273,7 @@ class SocialLogin extends WireData implements Module, ConfigurableModule
         require_once("classes/SocialLoginProcessProfile.php");
 
         $SocialLoginProcessProfile = new \ProcessWire\SocialLoginProcessProfile($this->enabled_profile_user_fields);
-        $SocialLoginProcessProfile->process();
+        return $SocialLoginProcessProfile->process();
     }
 
     public function showRegistration()
